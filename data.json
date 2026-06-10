@@ -1,12 +1,12 @@
 {
   "reportingPct": 96,
   "estTotal": 193373,
-  "updated": "2026-06-10T0 8:00-04:00",
+  "updated": "2026-06-10T08:00-04:00",
   "candidates": [
-    { "id": "shah",    "name": "Nirav Shah",     "fc": 49254 },
-    { "id": "pingree", "name": "Hannah Pingree", "fc": 43364 },
-    { "id": "jackson", "name": "Troy Jackson",   "fc": 39262 },
-    { "id": "bellows", "name": "Shenna Bellows", "fc": 38278 },
-    { "id": "kingiii", "name": "Angus King III", "fc": 15121 }
+    { "id": "shah",    "name": "Nirav Shah",     "fc": 50809 },
+    { "id": "pingree", "name": "Hannah Pingree", "fc": 44488 },
+    { "id": "jackson", "name": "Troy Jackson",   "fc": 40195 },
+    { "id": "bellows", "name": "Shenna Bellows", "fc": 39289 },
+    { "id": "kingiii", "name": "Angus King III", "fc": 15512 }
   ]
 }
