@@ -79,6 +79,14 @@
   .win-dot{width:13px;height:13px;border-radius:50%;flex:none;}
   .winner strong{font-weight:700;}
   .foot{margin-top:22px;font-size:11.5px;color:var(--soft);line-height:1.5;max-width:60ch;}
+  .exhaust-ctl{display:flex;align-items:center;flex-wrap:wrap;gap:12px;background:var(--card);border:1px solid var(--rule);border-radius:3px;padding:10px 16px;margin-bottom:18px;font-size:12.5px;}
+  .ex-label{font-family:'Space Mono',ui-monospace,monospace;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--soft);flex:none;}
+  .ex-field{display:flex;align-items:center;gap:5px;color:#33383a;}
+  .ex-num{width:58px;font-family:'Space Mono',ui-monospace,monospace;font-size:12px;text-align:right;padding:3px 6px;border:1px solid var(--rule);border-radius:2px;background:#fff;color:var(--ink);}
+  .ex-num:focus{outline:2px solid var(--ink);outline-offset:1px;}
+  .sb-ex{background:var(--soft);opacity:.35;}
+  .ex-dot{background:var(--soft);opacity:.6;}
+  .ex-txt{color:var(--soft);}
   @media (prefers-reduced-motion:reduce){.fb-seg{transition:none;}.sb-seg{transition:none;}}
 </style>
 </head>
@@ -94,6 +102,9 @@ var COLORS = {
   bellows: "#D46B0A",
   kingiii: "#2F7D4E"
 };
+
+// Stage-specific exhaustion rates (Maine 2018 Democratic gubernatorial tabulation defaults)
+var EXHAUST = { stage1: 0.016, stage2: 0.028, stage3: 0.043 };
 
 var FALLBACK = {
   reportingPct: 88, estTotal: 193373, updated: "",
@@ -144,60 +155,83 @@ var state = {
 function compute(){
   var cands=state.cands;
   var total=cands.reduce(function(s,c){return s+c.fc;},0);
-  var threshold=Math.floor(total/2)+1;
 
   var asc=cands.slice().sort(function(a,b){return a.fc-b.fc;});
   var L1=asc[0];
   var afterL1=cands.filter(function(c){return c.id!==L1.id;}).sort(function(a,b){return b.fc-a.fc;});
-  var w1=cutsToWidths(state.split1, afterL1.length);
-  var v1=afterL1.map(function(c,i){return {id:c.id,name:c.name,votes:c.fc+L1.fc*(w1[i]/100)};});
 
+  // Stage 1: skim exhaustion before splitting
+  var elim1=L1.fc, exhaust1=elim1*EXHAUST.stage1, dist1=elim1-exhaust1;
+  var w1=cutsToWidths(state.split1,afterL1.length);  // widths of distributable [sums to 100]
+  var v1=afterL1.map(function(c,i){return {id:c.id,name:c.name,votes:c.fc+dist1*(w1[i]/100)};});
+  var continuing1=total-exhaust1;
+
+  // Stage 2
   var v1asc=v1.slice().sort(function(a,b){return a.votes-b.votes;});
   var L2=v1asc[0];
   var afterL2=v1.filter(function(c){return c.id!==L2.id;}).sort(function(a,b){return b.votes-a.votes;});
-  var w2=cutsToWidths(state.split2, afterL2.length);
-  var v2=afterL2.map(function(c,i){return {id:c.id,name:c.name,votes:c.votes+L2.votes*(w2[i]/100)};});
+  var elim2=L2.votes, exhaust2=elim2*EXHAUST.stage2, dist2=elim2-exhaust2;
+  var w2=cutsToWidths(state.split2,afterL2.length);
+  var v2=afterL2.map(function(c,i){return {id:c.id,name:c.name,votes:c.votes+dist2*(w2[i]/100)};});
+  var continuing2=continuing1-exhaust2;
 
+  // Stage 3
   var v2asc=v2.slice().sort(function(a,b){return a.votes-b.votes;});
   var L3=v2asc[0];
   var finalTwo=v2.filter(function(c){return c.id!==L3.id;}).sort(function(a,b){return b.votes-a.votes;});
-
+  var elim3=L3.votes, exhaust3=elim3*EXHAUST.stage3, dist3=elim3-exhaust3;
   var a=finalTwo[0], b=finalTwo[1];
-  var aFinal=a.votes+L3.votes*(state.split3/100);
-  var bFinal=b.votes+L3.votes*(1-state.split3/100);
+  var aFinal=a.votes+dist3*(state.split3/100);
+  var bFinal=b.votes+dist3*(1-state.split3/100);
+  var continuing3=continuing2-exhaust3;
+  var finalThreshold=Math.floor(continuing3/2)+1;
   var finalPair=[{id:a.id,name:a.name,votes:aFinal},{id:b.id,name:b.name,votes:bFinal}].sort(function(x,y){return y.votes-x.votes;});
   var gap=a.votes-b.votes;
-  var crossover=L3.votes>0?(L3.votes+gap)/(2*L3.votes):1;
+  var crossover=dist3>0?(dist3+gap)/(2*dist3):1;
 
-  return {total:total,threshold:threshold,
-    L1:L1,afterL1:afterL1,w1:w1,
-    v1:v1,L2:L2,afterL2:afterL2,w2:w2,
-    v2:v2,L3:L3,finalTwo:finalTwo,
-    aPre:a,bPre:b,finalPair:finalPair,
+  return {total:total,continuing1:continuing1,continuing2:continuing2,continuing3:continuing3,
+    finalThreshold:finalThreshold,
+    L1:L1,afterL1:afterL1,w1:w1,elim1:elim1,dist1:dist1,exhaust1:exhaust1,
+    v1:v1,L2:L2,afterL2:afterL2,w2:w2,elim2:elim2,dist2:dist2,exhaust2:exhaust2,
+    v2:v2,L3:L3,elim3:elim3,dist3:dist3,exhaust3:exhaust3,
+    finalTwo:finalTwo,aPre:a,bPre:b,finalPair:finalPair,
     winner:finalPair[0],crossover:crossover};
 }
-
-function splitBarHTML(barId, cuts, parts){
-  var n=parts.length;
-  var widths=cutsToWidths(cuts,n);
+function splitBarHTML(barId, cuts, parts, exRate){
+  var n=parts.length, sc=1-exRate;
+  var raw=cutsToWidths(cuts,n);           // widths as % of distributable
+  var scaled=raw.map(function(w){return w*sc;}); // widths as % of full bar
+  var exW=exRate*100;
   var segs=parts.map(function(p,i){
-    return '<div class="sb-seg" style="width:'+widths[i]+'%;background:'+p.color+'">'
-      +(widths[i]>10?'<span class="sb-seg-pct">'+rnd(widths[i])+'%</span>':'')+'</div>';
+    return '<div class="sb-seg" style="width:'+scaled[i]+'%;background:'+p.color+'">'
+      +(scaled[i]>10?'<span class="sb-seg-pct">'+rnd(scaled[i])+'%</span>':'')+'</div>';
   }).join('');
+  segs+='<div class="sb-seg sb-ex" style="width:'+exW+'%;">'
+    +(exW>7?'<span class="sb-seg-pct" style="font-size:10px;">'+exW.toFixed(1)+'%</span>':'')+'</div>';
+  // thumbs live in [0, sc*100] of bar
   var thumbs=cuts.map(function(pos,i){
-    return '<div class="sb-thumb" data-thumb data-bar="'+barId+'" data-handle="'+(i+1)+'" tabindex="0" role="slider" aria-valuenow="'+rnd(pos)+'" style="left:'+pos+'%"><span class="sb-grip"></span></div>';
+    return '<div class="sb-thumb" data-thumb data-bar="'+barId+'" data-handle="'+(i+1)+'"'
+      +' tabindex="0" role="slider" aria-valuenow="'+rnd(pos)+'" style="left:'+(pos*sc)+'%">'
+      +'<span class="sb-grip"></span></div>';
   }).join('');
   return '<div class="sb-wrap"><div class="sb-track" id="sb'+barId+'-track">'+segs+thumbs+'</div></div>';
 }
-
-function legendHTML(parts, widths, pool){
+function legendHTML(parts, rawWidths, elim, exRate){
+  var sc=1-exRate;
+  // rounding reconciliation: remainder absorbed by exhausted bucket
+  var dispV=parts.map(function(p,i){ return Math.round(elim*sc*(rawWidths[i]/100)); });
+  var sumV=dispV.reduce(function(s,x){return s+x;},0);
+  var dispEx=Math.round(elim)-sumV;
   return '<div class="legend">'+parts.map(function(p,i){
+    var pct=(rawWidths[i]*sc).toFixed(1);
     return '<span class="leg"><span class="dot" style="background:'+p.color+'"></span>'
-      +esc(last(p.name))+' <b>'+rnd(widths[i])+'%</b>'
-      +'<span class="leg-add">+'+fmt(pool*widths[i]/100)+'</span></span>';
-  }).join('')+'</div>';
+      +esc(last(p.name))+' <b>'+pct+'%</b><span class="leg-add">+'+fmt(dispV[i])+'</span></span>';
+  }).join('')
+  +'<span class="leg"><span class="dot ex-dot"></span>'
+  +'<span class="ex-txt">Exhausted</span> <b class="ex-txt">'+(exRate*100).toFixed(1)+'%</b>'
+  +'<span class="leg-add">&minus;'+fmt(dispEx)+'</span></span>'
+  +'</div>';
 }
-
 function standingsHTML(v, outId){
   return '<div class="standings">'+v.slice().sort(function(a,b){return b.votes-a.votes;}).map(function(c){
     var isOut=c.id===outId;
@@ -214,7 +248,8 @@ function statusHTML(m){
     ?'<button class="newpill" data-action="refresh">Newer results &mdash; load</button>'
     :'<button class="refresh" data-action="refresh">Refresh</button>';
   return '<span class="live"><span class="live-dot"></span>'+(meta.reportingPct!=null?meta.reportingPct+"% in":"partial")+'</span>'
-    +'<span>&middot;</span><span>'+fmt(m.total)+(meta.estTotal?" of est. "+fmt(meta.estTotal):"")+' ballots</span>'
+    +'<span>&middot;</span><span>'+fmt(m.total)+(meta.estTotal?" of est. "+fmt(meta.estTotal):"")+' cast</span>'
+    +'<span>&middot;</span><span>'+fmt(m.continuing3)+' continuing</span>'
     +(updatedStr?'<span>&middot;</span><span>updated '+esc(updatedStr)+'</span>':'')
     +btn;
 }
@@ -237,12 +272,13 @@ function resultsHTML(m){
   var s1parts=m.afterL1.map(function(c){return {id:c.id,name:c.name,color:colorOf(c.id)};});
   var stage1='<section class="stage">'
     +'<div class="stage-head"><span class="stage-no">Stage 1</span>'
-    +'<span class="stage-title"><strong style="color:'+colorOf(m.L1.id)+'">'+esc(m.L1.name)+'</strong> eliminated &middot; '+fmt(m.L1.fc)+' ballots to split</span>'
+    +'<span class="stage-title"><strong style="color:'+colorOf(m.L1.id)+'">'+esc(m.L1.name)+'</strong>'
+    +' eliminated &middot; '+fmt(m.elim1)+' ballots</span>'
     +'<span class="presets"><button class="preset" data-action="preset1" data-kind="prop">Proportional</button>'
     +'<button class="preset" data-action="preset1" data-kind="even">Even</button></span></div>'
     +'<div class="xnote">Pingree &times; Jackson &times; Bellows cross-endorsed &mdash; their voters were asked to rank all three. King III&rsquo;s pile may break disproportionately away from Shah.</div>'
-    +splitBarHTML("1",state.split1,s1parts)
-    +legendHTML(s1parts,m.w1,m.L1.fc)
+    +splitBarHTML("1",state.split1,s1parts,EXHAUST.stage1)
+    +legendHTML(s1parts,m.w1,m.elim1,EXHAUST.stage1)
     +standingsHTML(m.v1,m.L2.id)
     +'</section>';
 
@@ -250,65 +286,89 @@ function resultsHTML(m){
   var s2parts=m.afterL2.map(function(c){return {id:c.id,name:c.name,color:colorOf(c.id)};});
   var stage2='<section class="stage">'
     +'<div class="stage-head"><span class="stage-no">Stage 2</span>'
-    +'<span class="stage-title"><strong style="color:'+colorOf(m.L2.id)+'">'+esc(m.L2.name)+'</strong> eliminated &middot; '+fmt(m.L2.votes)+' ballots to split</span>'
+    +'<span class="stage-title"><strong style="color:'+colorOf(m.L2.id)+'">'+esc(m.L2.name)+'</strong>'
+    +' eliminated &middot; '+fmt(m.elim2)+' ballots</span>'
     +'<span class="presets"><button class="preset" data-action="preset2" data-kind="prop">Proportional</button>'
     +'<button class="preset" data-action="preset2" data-kind="even">Even</button></span></div>'
-    +splitBarHTML("2",state.split2,s2parts)
-    +legendHTML(s2parts,m.w2,m.L2.votes)
+    +splitBarHTML("2",state.split2,s2parts,EXHAUST.stage2)
+    +legendHTML(s2parts,m.w2,m.elim2,EXHAUST.stage2)
     +standingsHTML(m.v2,m.L3.id)
     +'</section>';
 
-  // Stage 3
-  var p3=state.split3;
+  // Stage 3 — solo bar with exhaustion
+  var e3=EXHAUST.stage3, sc3=1-e3, p3=state.split3;
+  var aw3=p3/100*sc3*100, bw3=(100-p3)/100*sc3*100, exW3=e3*100, tPos3=p3/100*sc3*100;
   var a=m.aPre, b=m.bPre;
   var solo='<div class="sb-wrap"><div class="sb-track" id="sb3-track">'
-    +'<div class="sb-seg" style="width:'+p3+'%;background:'+colorOf(a.id)+'">'+(p3>12?'<span class="sb-seg-pct">'+rnd(p3)+'%</span>':'')+'</div>'
-    +'<div class="sb-seg" style="width:'+(100-p3)+'%;background:'+colorOf(b.id)+'">'+((100-p3)>12?'<span class="sb-seg-pct">'+rnd(100-p3)+'%</span>':'')+'</div>'
-    +'<div class="sb-thumb" data-thumb data-bar="3" data-handle="1" tabindex="0" role="slider" aria-valuenow="'+rnd(p3)+'" style="left:'+p3+'%"><span class="sb-grip"></span></div>'
+    +'<div class="sb-seg" style="width:'+aw3+'%;background:'+colorOf(a.id)+'">'+(aw3>12?'<span class="sb-seg-pct">'+rnd(aw3)+'%</span>':'')+'</div>'
+    +'<div class="sb-seg" style="width:'+bw3+'%;background:'+colorOf(b.id)+'">'+(bw3>12?'<span class="sb-seg-pct">'+rnd(bw3)+'%</span>':'')+'</div>'
+    +'<div class="sb-seg sb-ex" style="width:'+exW3+'%;">'+(exW3>7?'<span class="sb-seg-pct" style="font-size:10px;">'+exW3.toFixed(1)+'%</span>':'')+'</div>'
+    +'<div class="sb-thumb" data-thumb data-bar="3" data-handle="1" tabindex="0" role="slider" aria-valuenow="'+rnd(p3)+'" style="left:'+tPos3+'%"><span class="sb-grip"></span></div>'
     +'</div></div>';
+
+  // Stage 3 legend — rounding reconciliation
+  var dispA3=Math.round(m.dist3*p3/100);
+  var dispB3=Math.round(m.dist3*(100-p3)/100);
+  var dispEx3=Math.round(m.elim3)-dispA3-dispB3;
+  var pctA3=(p3/100*sc3*100).toFixed(1), pctB3=((100-p3)/100*sc3*100).toFixed(1);
   var leg3='<div class="legend">'
-    +'<span class="leg"><span class="dot" style="background:'+colorOf(a.id)+'"></span>'+esc(last(a.name))+' <b>'+rnd(p3)+'%</b><span class="leg-add">+'+fmt(m.L3.votes*p3/100)+'</span></span>'
-    +'<span class="leg"><span class="dot" style="background:'+colorOf(b.id)+'"></span>'+esc(last(b.name))+' <b>'+rnd(100-p3)+'%</b><span class="leg-add">+'+fmt(m.L3.votes*(100-p3)/100)+'</span></span>'
+    +'<span class="leg"><span class="dot" style="background:'+colorOf(a.id)+'"></span>'+esc(last(a.name))+' <b>'+pctA3+'%</b><span class="leg-add">+'+fmt(dispA3)+'</span></span>'
+    +'<span class="leg"><span class="dot" style="background:'+colorOf(b.id)+'"></span>'+esc(last(b.name))+' <b>'+pctB3+'%</b><span class="leg-add">+'+fmt(dispB3)+'</span></span>'
+    +'<span class="leg"><span class="dot ex-dot"></span>'
+    +'<span class="ex-txt">Exhausted</span> <b class="ex-txt">'+(e3*100).toFixed(1)+'%</b>'
+    +'<span class="leg-add">&minus;'+fmt(dispEx3)+'</span></span>'
     +'</div>';
+
   var cross=(m.crossover>=0&&m.crossover<=1)
-    ?'<strong>'+esc(b.name)+'</strong> overtakes <strong>'+esc(a.name)+'</strong> above <strong>'+rnd(m.crossover*100)+'%</strong> of the pile ('+fmt(m.L3.votes*m.crossover)+' votes).'
-    :esc(a.name)+' wins on any split of this pile.';
+    ?'<strong>'+esc(b.name)+'</strong> overtakes <strong>'+esc(a.name)+'</strong> above <strong>'+rnd(m.crossover*100)+'%</strong> of the distributable pile ('+fmt(m.dist3*m.crossover)+' votes).'
+    :esc(a.name)+' wins on any split of the distributable pile.';
+
+  // Final bar: widths and threshold against continuing3
+  var thrPct=(m.finalThreshold/m.continuing3*100).toFixed(2);
   var fbsegs=m.finalPair.map(function(c){
-    var w=c.votes/m.total*100;
+    var w=c.votes/m.continuing3*100;
     return '<div class="fb-seg" style="width:'+w+'%;background:'+colorOf(c.id)+'">'+(w>14?'<span class="fb-lab">'+esc(last(c.name))+' '+w.toFixed(1)+'%</span>':'')+'</div>';
   }).join('');
   var stage3='<section class="stage">'
     +'<div class="stage-head"><span class="stage-no">Stage 3</span>'
-    +'<span class="stage-title"><strong style="color:'+colorOf(m.L3.id)+'">'+esc(m.L3.name)+'</strong> eliminated &middot; '+fmt(m.L3.votes)+' ballots to split</span></div>'
+    +'<span class="stage-title"><strong style="color:'+colorOf(m.L3.id)+'">'+esc(m.L3.name)+'</strong>'
+    +' eliminated &middot; '+fmt(m.elim3)+' ballots</span></div>'
     +solo+leg3
     +'<div class="crossover">'+cross+'</div>'
-    +'<div class="finalbar">'+fbsegs+'<div class="fb-thr" style="left:50%"><span>50% + 1</span></div></div>'
+    +'<div class="finalbar">'+fbsegs+'<div class="fb-thr" style="left:'+thrPct+'%"><span>50% + 1</span></div></div>'
     +'</section>';
 
+  var winPct=(m.winner.votes/m.continuing3*100).toFixed(1);
   var winner='<div class="winner"><span class="win-dot" style="background:'+colorOf(m.winner.id)+'"></span>'
-    +'<span>Winner: <strong>'+esc(m.winner.name)+'</strong> &mdash; '+fmt(m.winner.votes)+' ('+(m.winner.votes/m.total*100).toFixed(1)+'%), margin '+fmt(m.finalPair[0].votes-m.finalPair[1].votes)+'</span></div>';
+    +'<span>Winner: <strong>'+esc(m.winner.name)+'</strong> &mdash; '+fmt(m.winner.votes)
+    +' ('+winPct+'% of '+fmt(m.continuing3)+' continuing), margin '+fmt(m.finalPair[0].votes-m.finalPair[1].votes)+'</span></div>';
 
   return stage1+stage2+stage3+winner;
 }
-
 function renderStatus(){ var m=compute(); document.getElementById("status").innerHTML=statusHTML(m); }
 function renderCounts(){ document.getElementById("counts").innerHTML=countsHTML(); }
 function renderResults(){ document.getElementById("results").innerHTML=resultsHTML(compute()); }
 function renderAll(){ renderStatus(); renderCounts(); renderResults(); }
 
 function buildShell(){
-  var m=compute();
   document.getElementById("app").innerHTML=
     '<div class="root"><header class="head">'
     +'<div class="eyebrow">Ranked-choice &middot; Maine Governor Democratic Primary &middot; June 9, 2026</div>'
     +'<h1>Three-stage transfer</h1>'
-    +'<p class="sub">Five candidates, three rounds of elimination. Split each pile and watch the count cross <strong>'+fmt(m.threshold)+'</strong> (50%&nbsp;+&nbsp;1).</p>'
+    +'<p class="sub">Five candidates, three rounds of elimination. Some ballots exhaust at each transfer &mdash; they carry no further ranking and leave the count.</p>'
     +'<div class="status" id="status"></div></header>'
     +'<section class="counts" id="counts"></section>'
+    +'<div class="exhaust-ctl">'
+    +'<span class="ex-label">Exhaustion rates</span>'
+    +'<label class="ex-field">Stage&nbsp;1 <input type="number" class="ex-num" data-ex="stage1" min="0" max="99" step="0.1" value="1.6">&nbsp;%</label>'
+    +'<label class="ex-field">Stage&nbsp;2 <input type="number" class="ex-num" data-ex="stage2" min="0" max="99" step="0.1" value="2.8">&nbsp;%</label>'
+    +'<label class="ex-field">Stage&nbsp;3 <input type="number" class="ex-num" data-ex="stage3" min="0" max="99" step="0.1" value="4.3">&nbsp;%</label>'
+    +'</div>'
     +'<div id="results"></div>'
-    +'<footer class="foot">A what-if model, not a projection. Drag dividers or use arrow keys. Numbers update as official results are posted.</footer></div>';
+    +'<footer class="foot">A what-if model, not a projection. Drag dividers or use arrow keys. Numbers update as official results are posted.<br>'
+    +'Exhaustion defaults (1.6% / 2.8% / 4.3%) derive from Maine SoS final RCV tabulations for the June 12, 2018 Democratic primaries '
+    +'(<em>democraticgovfinal.xls, democraticcgfinal.xls</em>). Each rate = newly exhausted ballots that round &divide; prior round&rsquo;s continuing ballots.</footer></div>';
 }
-
 function applyData(d){
   state.meta={reportingPct:d.reportingPct,estTotal:d.estTotal,updated:d.updated};
   state.cands=d.candidates.map(function(c){return {id:c.id,name:c.name,fc:c.fc};});
@@ -363,15 +423,17 @@ function trackPct(id,cx){
 
 function moveCut(bar,handleIdx,p){
   if(bar==="1"){
+    var sc=1-EXHAUST.stage1, raw=Math.max(0,Math.min(100,p/sc));
     var c=state.split1.slice(),h=handleIdx;
     var mn=h>0?c[h-1]:0, mx=h<c.length-1?c[h+1]:100;
-    c[h]=Math.max(mn,Math.min(mx,p)); state.split1=c;
+    c[h]=Math.max(mn,Math.min(mx,raw)); state.split1=c;
   } else if(bar==="2"){
+    var sc=1-EXHAUST.stage2, raw=Math.max(0,Math.min(100,p/sc));
     var c=state.split2.slice(),h=handleIdx;
     var mn=h>0?c[h-1]:0, mx=h<c.length-1?c[h+1]:100;
-    c[h]=Math.max(mn,Math.min(mx,p)); state.split2=c;
+    c[h]=Math.max(mn,Math.min(mx,raw)); state.split2=c;
   } else if(bar==="3"){
-    state.split3=Math.max(0,Math.min(100,p));
+    state.split3=Math.max(0,Math.min(100,p/(1-EXHAUST.stage3)));
   }
 }
 
@@ -390,6 +452,12 @@ document.addEventListener("DOMContentLoaded",function(){
   });
 
   app.addEventListener("input",function(e){
+    var ex=e.target.closest("[data-ex]");
+    if(ex){
+      var key=ex.getAttribute("data-ex");
+      EXHAUST[key]=Math.max(0,Math.min(0.99,(Number(ex.value)||0)/100));
+      renderResults(); return;
+    }
     var inp=e.target.closest("[data-fc]");if(!inp)return;
     var id=inp.getAttribute("data-fc");
     var v=Math.max(0,Number(inp.value)||0);
